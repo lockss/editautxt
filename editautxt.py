@@ -35,18 +35,22 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.'''
 __version__ = '0.1.0'
 
 import optparse
+import os.path
+import shutil
 import sys
 
 class EditAuTxtOptions(object):
 
     @staticmethod
     def make_parser():
-        usage = '%prog [OPTIONS] AUTXT'
+        usage = '%prog {--auid AUID|--auids=AFILE} AUTXT SRCREPO DSTREPO'
         parser = optparse.OptionParser(version=__version__, description=__doc__, usage=usage)
         # Default group
         # --help, --version defined automatically
         parser.add_option('--copyright', '-C', action='store_true', help='show copyright and exit')
         parser.add_option('--license', '-L', action='store_true', help='show license and exit')
+        parser.add_option('--auid', action='append', default=list(), help='add AUID to target AUIDs')
+        parser.add_option('--auids', action='append', default=list(), metavar='AFILE', help='add AUIDs in AFILE to target AUIDs')
         return parser
 
     def __init__(self, parser, opts, args):
@@ -63,13 +67,119 @@ class EditAuTxtOptions(object):
             else:
                 raise RuntimeError('internal error')
             sys.exit()
+        # autxt, srcrepo, dstrepo, srcdir, dstdir
+        if len(args or list()) != 3:
+            parser.error('expected 3 arguments, got %d' % (len(args or list()),))
+        self.autxt, self.srcrepo, self.dstrepo = args
+        if not os.path.isfile(self.autxt):
+            parser.error('file not found: %s' % (autxt,))
+        self.srcdir = self.repodir(parser, self.srcrepo)
+        self.dstdir = self.repodir(parser, self.dstrepo)
+        # auids
+        self.auids = opts.auid[:]
+        for fstr in opts.auids:
+            self.auids.extend(file_lines(fstr))
+        if len(self.auids) == 0:
+            parser.error('at least one target AUID is required')
 
-def _main():
-    '''Main method.'''
+    def repodir(self, parser, repopath):
+        if not os.path.isdir(repopath):
+            parser.error('directory not found: %s' % (repopath,))
+        repodir = os.path.join(repopath, 'cache')
+        if not os.path.isdir(repodir):
+            parser.error('directory not found: %s' % (repodir,))
+        return repodir
+
+class EditAuTxt(object):
+
+    def __init__(self, options):
+        super(EditAuTxt, self).__init__()
+        self.options = options
+        self.autxtauids = None
+        self.autxtlines = None
+
+    def ask_daemon_stopped(self):
+        resp = raw_input('Are you sure the LOCKSS Daemon is stopped? [yn] ')
+        if resp != 'y':
+            sys.exit('Exiting.')
+        print 'Are you REALLY sure the LOCKSS Daemon is stopped?'
+        print 'Type yes only if you are absolutely certain.'
+        resp = raw_input()
+        if resp != 'yes':
+            sys.exit('Exiting.')
+
+    def backup_autxt(self):
+        i = 1
+        while True:
+            filestr = '%s.%d' % (self.options.autxt, i)
+            if not os.path.isfile(filestr):
+                break
+            i = i + 1
+        shutil.copyfile(self.options.autxt, filestr)
+
+    def perform_change(self):
+        srcval = 'local\\:%s' % (self.options.srcrepo,)
+        dstval = 'local\\:%s' % (self.options.dstrepo,)
+        errors = list()
+        for auid in self.options.auids:
+            linenum = self.autxtauids[auid]
+            line = self.autxtlines[linenum]
+            key, eq, val = line.partition('=')
+            if val != srcval:
+                errors.append(auid)
+            else:
+                self.autxtlines[linenum] = '%s=%s' % (key, dstval)
+        if len(errors) > 0:
+            print 'AUIDs not in %s in au.txt:' % (self.options.srcrepo)
+            for auid in errors:
+                print auid
+            sys.exit('Exiting.')
+
+    def parse_autxt(self):
+        errors = list()
+        self.autxtauids = dict()
+        for auid in self.options.auids:
+            pluginid, amp, aukey = auid.partition('&')
+            propkey = 'org.lockss.au.%s.%s.reserved.repository' % (pluginid.replace('.', '|'), aukey)
+            for i, line in enumerate(self.autxtlines):
+                if line.partition('=')[0] == propkey:
+                    self.autxtauids[auid] = i
+                    break
+            else:
+                errors.append(auid)
+        if len(errors) > 0:
+            print 'AUIDs not found in au.txt:'
+            for auid in errors:
+                print auid
+            sys.exit('Exiting')
+
+    def read_autxt(self):
+        with open(os.path.expanduser(self.options.autxt)) as f:
+            self.autxtlines = [x.rstrip() for x in f]
+
+    def rewrite_autxt(self):
+        with open(os.path.expanduser(self.options.autxt), 'w') as f:
+            for line in self.autxtlines:
+                f.write(line + '\n')        
+
+    def run(self):
+        self.ask_daemon_stopped()
+        self.read_autxt()
+        self.parse_autxt()
+        self.perform_change()
+        self.backup_autxt()
+        self.rewrite_autxt()
+
+# Last modified 2015-08-31
+def file_lines(fstr):
+    with open(os.path.expanduser(fstr)) as f: ret = filter(lambda y: len(y) > 0, [x.partition('#')[0].strip() for x in f])
+    if len(ret) == 0: sys.exit('Error: %s contains no meaningful lines' % (fstr,))
+    return ret
+
+# Main entry point
+if __name__ == '__main__':
     parser = EditAuTxtOptions.make_parser()
     (opts, args) = parser.parse_args()
     options = EditAuTxtOptions(parser, opts, args)
-
-# Main entry point
-if __name__ == '__main__': _main()
+    EditAuTxt(options).run()
 
