@@ -136,16 +136,18 @@ class EditAuTxt(object):
             sys.exit('Exiting.')
 
     def parse_autxt(self):
-        errors = list()
         self.autxtauids = dict()
+        for i, line in self.autxtlines:
+            if '.reserved.repository=' not in line:
+                continue
+            pluginid, dot, aukey = line.rpartition('.reserved.repository=')[0].partition('org.lockss.au.')[1].partition('.')
+            auid = '%s&%s' % (pluginid, aukey)
+            if auid not in self.options.auids:
+                continue
+            self.autxtauids[auid] = i
+        errors = list()
         for auid in self.options.auids:
-            pluginid, amp, aukey = auid.partition('&')
-            propkey = 'org.lockss.au.%s.%s.reserved.repository' % (pluginid.replace('.', '|'), aukey)
-            for i, line in enumerate(self.autxtlines):
-                if line.partition('=')[0] == propkey:
-                    self.autxtauids[auid] = i
-                    break
-            else:
+            if auid not in self.autxtauids:
                 errors.append(auid)
         if len(errors) > 0:
             print 'AUIDs not found in au.txt:'
