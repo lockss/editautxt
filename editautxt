@@ -33,7 +33,7 @@ if which realpath &> /dev/null ; then
 elif which grealpath &> /dev/null ; then
   REALPATH=grealpath
 elif which readlink &> /dev/null ; then
-  REALPATH=readline --canonicalize
+  REALPATH=readlink --canonicalize
 else
   echo "${0}: realpath (or grealpath, or readlink) not found" >&2
   exit 1
