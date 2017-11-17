@@ -150,7 +150,7 @@ class EditAuTxt(object):
         for i, line in enumerate(self.autxtlines):
             if '.reserved.' not in line:
                 continue
-            pluginid, dot, aukey = line.rpartition('.reserved.disabled=')[0].partition('org.lockss.au.')[1].partition('.')
+            pluginid, dot, aukey = line.rpartition('.reserved.')[0].partition('org.lockss.au.')[2].partition('.')
             auid = '%s&%s' % (pluginid, aukey)
             if auid not in self.options.auids:
                 continue
@@ -173,7 +173,7 @@ class EditAuTxt(object):
         for auid in self.options.auids:
             if self.autxtauids.get(auid) == -1:
                 self.autxtauids[auid] = len(self.autxtlines)
-                self.autxtlines.append('org.lockss.au.%s.%s.reserved.repository=%s' % (auid.partition('&')[0].replace('.', '|'), auid.partition('&')[1], self.options.defrepo))
+                self.autxtlines.append('org.lockss.au.%s.%s.reserved.repository=local\\:%s' % (auid.partition('&')[0], auid.partition('&')[2], self.options.defrepo))
 
     def read_autxt(self):
         with open(os.path.expanduser(self.options.autxt)) as f:
