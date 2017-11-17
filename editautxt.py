@@ -43,7 +43,7 @@ class EditAuTxtOptions(object):
 
     @staticmethod
     def make_parser():
-        usage = '%prog [OPTIONS] {--auid AUID|--auids=AFILE} AUTXT SRCREPO DSTREPO'
+        usage = '%prog [OPTIONS] {--auid AUID|--auids=AFILE} AUTXT SRCREPO DSTREPO DEFREPO'
         parser = optparse.OptionParser(version=__version__, description=__doc__, usage=usage)
         # Default group
         # --help, --version defined automatically
@@ -72,14 +72,15 @@ class EditAuTxtOptions(object):
             else:
                 raise RuntimeError('internal error')
             sys.exit()
-        # autxt, srcrepo, dstrepo, srcdir, dstdir
-        if len(args or list()) != 3:
-            parser.error('expected 3 arguments, got %d' % (len(args or list()),))
-        self.autxt, self.srcrepo, self.dstrepo = args
+        # autxt, srcrepo, dstrepo, defrepo, srcdir, dstdir, defdir
+        if len(args or list()) != 4:
+            parser.error('expected 4 arguments, got %d' % (len(args or list()),))
+        self.autxt, self.srcrepo, self.dstrepo, self.defrepo = args
         if not os.path.isfile(self.autxt):
             parser.error('file not found: %s' % (autxt,))
         self.srcdir = self.repodir(parser, self.srcrepo)
         self.dstdir = self.repodir(parser, self.dstrepo)
+        self.defdir = self.repodir(parser, self.defrepo)
         # auids
         self.auids = opts.auid[:]
         for fstr in opts.auids:
@@ -147,13 +148,17 @@ class EditAuTxt(object):
     def parse_autxt(self):
         self.autxtauids = dict()
         for i, line in enumerate(self.autxtlines):
-            if '.reserved.repository=' not in line:
+            if '.reserved.' not in line:
                 continue
-            pluginid, dot, aukey = line.rpartition('.reserved.repository=')[0].partition('org.lockss.au.')[1].partition('.')
+            pluginid, dot, aukey = line.rpartition('.reserved.disabled=')[0].partition('org.lockss.au.')[1].partition('.')
             auid = '%s&%s' % (pluginid, aukey)
             if auid not in self.options.auids:
                 continue
-            self.autxtauids[auid] = i
+            if '.reserved.disabled=' in line:
+                self.autxtauids.setdefault(auid, -1)
+                continue
+            if '.reserved.repository=' in line:
+                self.autxtauids[auid] = i
         errors = list()
         for auid in self.options.auids:
             if auid not in self.autxtauids:
@@ -164,6 +169,11 @@ class EditAuTxt(object):
                 print auid
             if not self.options.warn_if_missing:
                 sys.exit('Exiting')
+        # Fix up default repository
+        for auid in self.options.auids:
+            if self.autxtauids.get(auid) == -1:
+                self.autxtauids[auid] = len(self.autxtlines)
+                self.autxtlines.append('org.lockss.au.%s.%s.reserved.repository=%s' % (auid.partition('&')[0].replace('.', '|'), auid.partition('&')[1], self.options.defrepo))
 
     def read_autxt(self):
         with open(os.path.expanduser(self.options.autxt)) as f:
