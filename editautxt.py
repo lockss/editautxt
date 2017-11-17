@@ -43,14 +43,19 @@ class EditAuTxtOptions(object):
 
     @staticmethod
     def make_parser():
-        usage = '%prog {--auid AUID|--auids=AFILE} AUTXT SRCREPO DSTREPO'
+        usage = '%prog [OPTIONS] {--auid AUID|--auids=AFILE} AUTXT SRCREPO DSTREPO'
         parser = optparse.OptionParser(version=__version__, description=__doc__, usage=usage)
         # Default group
         # --help, --version defined automatically
         parser.add_option('--copyright', '-C', action='store_true', help='show copyright and exit')
         parser.add_option('--license', '-L', action='store_true', help='show license and exit')
-        parser.add_option('--auid', action='append', default=list(), help='add AUID to target AUIDs')
-        parser.add_option('--auids', action='append', default=list(), metavar='AFILE', help='add AUIDs in AFILE to target AUIDs')
+        group = optparse.OptionGroup(parser, 'AUIDs')
+        group.add_option('--auid', action='append', default=list(), help='add AUID to target AUIDs')
+        group.add_option('--auids', action='append', default=list(), metavar='AFILE', help='add AUIDs in AFILE to target AUIDs')
+        parser.add_option_group(group)
+        group = optparse.OptionGroup(parser, 'Other options')
+        group.add_option('--warn-if-missing', action='store_true', default=False, help='do not fail if a target AUID is not found in au.txt')
+        parser.add_option_group(group)
         return parser
 
     def __init__(self, parser, opts, args):
@@ -81,6 +86,8 @@ class EditAuTxtOptions(object):
             self.auids.extend(file_lines(fstr))
         if len(self.auids) == 0:
             parser.error('at least one target AUID is required')
+        # warn_if_missing
+        self.warn_if_missing = bool(opts.warn_if_missing)
 
     def repodir(self, parser, repopath):
         if not os.path.isdir(repopath):
@@ -122,7 +129,9 @@ class EditAuTxt(object):
         dstval = 'local\\:%s' % (self.options.dstrepo,)
         errors = list()
         for auid in self.options.auids:
-            linenum = self.autxtauids[auid]
+            linenum = self.autxtauids.get(auid, None)
+            if linenum is None and self.options.warn_if_missing:
+                continue
             line = self.autxtlines[linenum]
             key, eq, val = line.partition('=')
             if val != srcval:
@@ -153,7 +162,8 @@ class EditAuTxt(object):
             print 'AUIDs not found in au.txt:'
             for auid in errors:
                 print auid
-            sys.exit('Exiting')
+            if not self.options.warn_if_missing:
+                sys.exit('Exiting')
 
     def read_autxt(self):
         with open(os.path.expanduser(self.options.autxt)) as f:
