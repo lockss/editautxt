@@ -137,7 +137,7 @@ class EditAuTxt(object):
 
     def parse_autxt(self):
         self.autxtauids = dict()
-        for i, line in self.autxtlines:
+        for i, line in enumerate(self.autxtlines):
             if '.reserved.repository=' not in line:
                 continue
             pluginid, dot, aukey = line.rpartition('.reserved.repository=')[0].partition('org.lockss.au.')[1].partition('.')
