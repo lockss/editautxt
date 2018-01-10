@@ -3,7 +3,7 @@
 '''A script to edit the LOCKSS Daemon's au.txt file offline.'''
 
 __copyright__ = '''\
-Copyright (c) 2000, Board of Trustees of Leland Stanford Jr. University.
+Copyright (c) 2000-2018, Board of Trustees of Leland Stanford Jr. University.
 All rights reserved.'''
 
 __license__ = '''\
@@ -32,7 +32,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.'''
 
-__version__ = '0.1.0'
+__version__ = '1.0.0'
 
 import optparse
 import os.path
@@ -59,6 +59,16 @@ class EditAuTxtOptions(object):
         return parser
 
     def __init__(self, parser, opts, args):
+        '''
+        Constructor.
+
+        Arguments:
+        - parser (optparse.OptionParser): an option parser
+        - opts (optparse.Values): the option values returned by the option
+        parser
+        - args (list of strings): the remaining arguments returned by the
+        option parser
+        '''
         super(EditAuTxtOptions, self).__init__()
         # --help, --version handled automatically
         # --copyright, --license
@@ -91,6 +101,19 @@ class EditAuTxtOptions(object):
         self.warn_if_missing = bool(opts.warn_if_missing)
 
     def repodir(self, parser, repopath):
+        '''
+        Checks if a directory string corresponds to a daemon repository by
+        checking if it has a 'cache' subdirectory. If it does, that
+        subdirectory is returned. If not, the error function of the option
+        parser is invoked.
+
+        Arguments:
+        - parser (optparse.OptionParser): an option parser
+        - repopath (string): a directory
+
+        Returns:
+        The 'cache' subdirectory of the given directory.
+        '''
         if not os.path.isdir(repopath):
             parser.error('directory not found: %s' % (repopath,))
         repodir = os.path.join(repopath, 'cache')
@@ -101,12 +124,22 @@ class EditAuTxtOptions(object):
 class EditAuTxt(object):
 
     def __init__(self, options):
+        '''
+        Constructor.
+
+        Arguments:
+        - options (EditAuTxtOptions): an options struct.
+        '''
         super(EditAuTxt, self).__init__()
         self.options = options
         self.autxtauids = None
         self.autxtlines = None
 
     def ask_daemon_stopped(self):
+        '''
+        Deliberately obnoxious interactive prompt asking twice if the daemon
+        is really stopped; exits if the user does not respond properly.
+        '''
         resp = raw_input('Are you sure the LOCKSS Daemon is stopped? [yn] ')
         if resp != 'y':
             sys.exit('Exiting.')
@@ -117,6 +150,10 @@ class EditAuTxt(object):
             sys.exit('Exiting.')
 
     def backup_autxt(self):
+        '''
+        Makes a backup of au.txt before rewriting it. Tries au.txt.1, au.txt.2,
+        etc. until a never-before-used backup file name is found.
+        '''
         i = 1
         while True:
             filestr = '%s.%d' % (self.options.autxt, i)
@@ -126,19 +163,29 @@ class EditAuTxt(object):
         shutil.copyfile(self.options.autxt, filestr)
 
     def perform_change(self):
+        '''
+        Performs the requested change from one daemon repository directory
+        to another.
+        '''
         srcval = 'local\\:%s' % (self.options.srcrepo,)
         dstval = 'local\\:%s' % (self.options.dstrepo,)
         errors = list()
         for auid in self.options.auids:
+            # If --warn-if-missing was used, okay if AUID not found
             linenum = self.autxtauids.get(auid, None)
             if linenum is None and self.options.warn_if_missing:
                 continue
+            # Parse original au.txt repository line
             line = self.autxtlines[linenum]
             key, eq, val = line.partition('=')
+            # Verify that origin is correct
             if val != srcval:
+                # Incorrect: remember error
                 errors.append(auid)
             else:
+                # Correct: rewrite au.txt repository line
                 self.autxtlines[linenum] = '%s=%s' % (key, dstval)
+        # Report and exit if there are any errors
         if len(errors) > 0:
             print 'AUIDs not in %s in au.txt:' % (self.options.srcrepo)
             for auid in errors:
@@ -146,6 +193,12 @@ class EditAuTxt(object):
             sys.exit('Exiting.')
 
     def parse_autxt(self):
+        '''
+        Parses au.txt (from the lines loaded in memory).
+        '''
+        # Build a map from AUID to the line number in au.txt where that AU's
+        # repository is defined (or -1 if there is no explicit repository line
+        # in au.txt for that AU)
         self.autxtauids = dict()
         for i, line in enumerate(self.autxtlines):
             if '.reserved.' not in line:
@@ -159,6 +212,8 @@ class EditAuTxt(object):
                 continue
             if '.reserved.repository=' in line:
                 self.autxtauids[auid] = i
+        # Check that all the requested AUIDs were found in au.txt. Exit if any
+        # were not found unless --warn-if-missing was used.
         errors = list()
         for auid in self.options.auids:
             if auid not in self.autxtauids:
@@ -169,22 +224,33 @@ class EditAuTxt(object):
                 print auid
             if not self.options.warn_if_missing:
                 sys.exit('Exiting')
-        # Fix up default repository
+        # Fix up default repository (AUIDs that map to line number -1) by
+        # appending an explicit repository line to the end of the au.txt lines
+        # in memory
         for auid in self.options.auids:
             if self.autxtauids.get(auid) == -1:
                 self.autxtauids[auid] = len(self.autxtlines)
                 self.autxtlines.append('org.lockss.au.%s.%s.reserved.repository=local\\:%s' % (auid.partition('&')[0], auid.partition('&')[2], self.options.defrepo))
 
     def read_autxt(self):
+        '''
+        Reads the lines of au.txt into memory.
+        '''
         with open(os.path.expanduser(self.options.autxt)) as f:
             self.autxtlines = [x.rstrip() for x in f]
 
     def rewrite_autxt(self):
+        '''
+        Writes the modified au.txt lines in memory to au.txt.
+        '''
         with open(os.path.expanduser(self.options.autxt), 'w') as f:
             for line in self.autxtlines:
                 f.write(line + '\n')        
 
     def run(self):
+        '''
+        Entry point.
+        '''
         self.ask_daemon_stopped()
         self.read_autxt()
         self.parse_autxt()
