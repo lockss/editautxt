@@ -32,7 +32,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.'''
 
-__version__ = '1.1.0'
+__version__ = '1.1.0-dev'
 
 import optparse
 import os.path
@@ -190,7 +190,7 @@ class EditAuTxt(object):
             print 'AUIDs not in %s in au.txt:' % (self.options.srcrepo)
             for auid in errors:
                 print auid
-            sys.exit('Exiting.')
+            sys.exit('%d error%s; exiting' % (len(errors), '' if len(errors) == 1 else 's'))
 
     def parse_autxt(self):
         '''
@@ -223,7 +223,7 @@ class EditAuTxt(object):
             for auid in errors:
                 print auid
             if not self.options.warn_if_missing:
-                sys.exit('Exiting')
+                sys.exit('%d error%s; exiting' % (len(errors), '' if len(errors) == 1 else 's'))
         # Fix up default repository (AUIDs that map to line number -1) by
         # appending an explicit repository line to the end of the au.txt lines
         # in memory
